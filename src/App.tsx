@@ -339,17 +339,23 @@ const Dashboard = () => {
   const [sessionToDelete, setSessionToDelete] = useState<number | null>(null);
 
   const fetchSummary = () => {
-    api.get('/api/reports/summary').then(setSummary);
-    api.get('/api/reports/sessions').then(setSessions);
-    api.get('/api/reports/finance').then(setFinanceSummary);
+    api.get('/api/reports/summary').then(res => {
+      if (!res.error) setSummary(res);
+    });
+    api.get('/api/reports/sessions').then(res => {
+      if (Array.isArray(res)) setSessions(res);
+    });
+    api.get('/api/reports/finance').then(res => {
+      if (Array.isArray(res)) setFinanceSummary(res);
+    });
   };
 
   useEffect(() => {
     fetchSummary();
   }, []);
 
-  const totalHeld = financeSummary.reduce((acc, curr) => acc + curr.pending_amount, 0);
-  const totalReleased = financeSummary.reduce((acc, curr) => acc + curr.released_amount, 0);
+  const totalHeld = Array.isArray(financeSummary) ? financeSummary.reduce((acc, curr) => acc + (curr.pending_amount || 0), 0) : 0;
+  const totalReleased = Array.isArray(financeSummary) ? financeSummary.reduce((acc, curr) => acc + (curr.released_amount || 0), 0) : 0;
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -1770,7 +1776,11 @@ const FinanceReports = () => {
   const fetchData = async () => {
     setLoading(true);
     const res = await api.get('/api/reports/finance');
-    setData(res);
+    if (Array.isArray(res)) {
+      setData(res);
+    } else {
+      setData([]);
+    }
     setLoading(false);
   };
 
@@ -1786,12 +1796,12 @@ const FinanceReports = () => {
     }).format(val);
   };
 
-  const totalHeld = data.reduce((acc, curr) => acc + curr.pending_amount, 0);
-  const totalReleased = data.reduce((acc, curr) => acc + curr.released_amount, 0);
-  const totalRevenue = data.reduce((acc, curr) => acc + curr.total_revenue, 0);
-  const totalCost = data.reduce((acc, curr) => acc + curr.total_cost, 0);
-  const totalAdminFee = data.reduce((acc, curr) => acc + curr.total_admin_fee, 0);
-  const totalNetProfit = data.reduce((acc, curr) => acc + curr.net_profit, 0);
+  const totalHeld = Array.isArray(data) ? data.reduce((acc, curr) => acc + (curr.pending_amount || 0), 0) : 0;
+  const totalReleased = Array.isArray(data) ? data.reduce((acc, curr) => acc + (curr.released_amount || 0), 0) : 0;
+  const totalRevenue = Array.isArray(data) ? data.reduce((acc, curr) => acc + (curr.total_revenue || 0), 0) : 0;
+  const totalCost = Array.isArray(data) ? data.reduce((acc, curr) => acc + (curr.total_cost || 0), 0) : 0;
+  const totalAdminFee = Array.isArray(data) ? data.reduce((acc, curr) => acc + (curr.total_admin_fee || 0), 0) : 0;
+  const totalNetProfit = Array.isArray(data) ? data.reduce((acc, curr) => acc + (curr.net_profit || 0), 0) : 0;
 
   return (
     <div className="space-y-6 pb-12">

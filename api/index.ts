@@ -1,17 +1,11 @@
 import "dotenv/config";
 import express from "express";
-console.log("API Index starting...");
-import * as path from "node:path";
+import * as path from "path";
 import cors from "cors";
-import { fileURLToPath } from "node:url";
-import * as jwt from "jsonwebtoken";
-import * as bcrypt from "bcryptjs";
+import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
-
-// @ts-ignore
-const _jwt = jwt.default || jwt;
-// @ts-ignore
-const _bcrypt = bcrypt.default || bcrypt;
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,15 +37,18 @@ const authenticateToken = (req: any, res: any, next: any) => {
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) return res.sendStatus(401);
 
-  _jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
     if (err) return res.sendStatus(403);
     req.user = user;
     next();
   });
 };
 
+// Create a router for all /api routes
+const apiRouter = express.Router();
+
 // Debug Route for Orders
-app.get("/api/debug/orders", async (req, res) => {
+apiRouter.get("/debug/orders", async (req, res) => {
   const { data, error } = await supabase
     .from("orders")
     .select("*")
@@ -68,9 +65,9 @@ app.get("/api/debug/orders", async (req, res) => {
 });
 
 // Setup Route
-app.get("/api/setup", async (req, res) => {
+apiRouter.get("/setup", async (req, res) => {
   try {
-    const hashedPassword = _bcrypt.hashSync("admin123", 10);
+    const hashedPassword = bcrypt.hashSync("admin123", 10);
     const { data, error } = await supabase
       .from("users")
       .upsert([{ 
@@ -97,7 +94,7 @@ app.get("/api/setup", async (req, res) => {
 });
 
 // Auth Routes
-app.post("/api/auth/login", async (req, res) => {
+apiRouter.post("/auth/login", async (req, res) => {
   try {
     const { username, password } = req.body;
     const normalizedUsername = username.trim().toLowerCase();
@@ -142,13 +139,13 @@ app.post("/api/auth/login", async (req, res) => {
 
     if (!user) return res.status(400).json({ message: "User not found" });
     
-    const isPasswordValid = _bcrypt.compareSync(password, user.password);
+    const isPasswordValid = bcrypt.compareSync(password, user.password);
     if (!isPasswordValid) {
       console.warn(`Invalid password for user: ${username}`);
       return res.status(400).json({ message: "Invalid password" });
     }
     
-    const token = _jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET);
+    const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET);
     res.json({ token, user: { id: user.id, username: user.username, role: user.role, name: user.name } });
   } catch (err: any) {
     console.error("Login Exception:", err);
@@ -157,7 +154,7 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 // Orders Routes
-app.get("/api/orders", authenticateToken, async (req, res) => {
+apiRouter.get("/orders", authenticateToken, async (req, res) => {
   const { data, error } = await supabase
     .from("orders")
     .select("*")
@@ -167,7 +164,7 @@ app.get("/api/orders", authenticateToken, async (req, res) => {
   res.json(data);
 });
 
-app.post("/api/orders/import", authenticateToken, async (req, res) => {
+apiRouter.post("/orders/import", authenticateToken, async (req, res) => {
   const orders = req.body;
   
   // 1. Get existing order_ids to skip duplicates
@@ -216,7 +213,7 @@ app.post("/api/orders/import", authenticateToken, async (req, res) => {
   });
 });
 
-app.post("/api/orders", authenticateToken, async (req, res) => {
+apiRouter.post("/orders", authenticateToken, async (req, res) => {
   const o = req.body;
   console.log("Attempting to insert order:", o);
   const { data, error } = await supabase
@@ -236,7 +233,7 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
   res.json(data[0]);
 });
 
-app.delete("/api/orders/:id", authenticateToken, async (req, res) => {
+apiRouter.delete("/orders/:id", authenticateToken, async (req, res) => {
   const { error } = await supabase
     .from("orders")
     .delete()
@@ -247,7 +244,7 @@ app.delete("/api/orders/:id", authenticateToken, async (req, res) => {
 });
 
 // Scan Routes
-app.post("/api/scan/session/start", authenticateToken, async (req: any, res) => {
+apiRouter.post("/scan/session/start", authenticateToken, async (req: any, res) => {
   const { session_name } = req.body;
   const { data, error } = await supabase
     .from("scan_sessions")
@@ -258,7 +255,7 @@ app.post("/api/scan/session/start", authenticateToken, async (req: any, res) => 
   res.json(data[0]);
 });
 
-app.post("/api/scan/check", authenticateToken, async (req, res) => {
+apiRouter.post("/scan/check", authenticateToken, async (req, res) => {
   const { tracking_number } = req.body;
   const { data: order, error } = await supabase
     .from("orders")
@@ -277,7 +274,7 @@ app.post("/api/scan/check", authenticateToken, async (req, res) => {
   res.json(order);
 });
 
-app.post("/api/scan/confirm", authenticateToken, async (req, res) => {
+apiRouter.post("/scan/confirm", authenticateToken, async (req, res) => {
   const { session_id, tracking_numbers } = req.body;
   const now = new Date().toISOString();
   
@@ -327,7 +324,7 @@ app.post("/api/scan/confirm", authenticateToken, async (req, res) => {
 
 
 // Reports
-app.get("/api/reports/summary", authenticateToken, async (req, res) => {
+apiRouter.get("/reports/summary", authenticateToken, async (req, res) => {
   const { data: allOrders, error } = await supabase
     .from("orders")
     .select("status, total_quantity, store_name");
@@ -357,7 +354,7 @@ app.get("/api/reports/summary", authenticateToken, async (req, res) => {
   res.json({ total, scanned, totalPcs, scannedPcs, storeSummary });
 });
 
-app.get("/api/reports/sessions", authenticateToken, async (req, res) => {
+apiRouter.get("/reports/sessions", authenticateToken, async (req, res) => {
   const { data, error } = await supabase
     .from("scan_sessions")
     .select(`
@@ -377,7 +374,37 @@ app.get("/api/reports/sessions", authenticateToken, async (req, res) => {
   res.json(mappedData);
 });
 
-app.delete("/api/scan/session/:id", authenticateToken, async (req, res) => {
+apiRouter.get("/reports/finance", authenticateToken, async (req, res) => {
+  const { data: allOrders, error } = await supabase
+    .from("orders")
+    .select("total_amount, total_cost, payment_status, admin_fee");
+  
+  if (error) return res.status(500).json({ error: error.message });
+  
+  const pending = allOrders
+    .filter(o => o.payment_status === 'pending')
+    .reduce((sum, o) => sum + (o.total_amount || 0), 0);
+    
+  const released = allOrders
+    .filter(o => o.payment_status === 'released')
+    .reduce((sum, o) => sum + (o.total_amount || 0), 0);
+
+  const totalRevenue = allOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+  const totalCost = allOrders.reduce((sum, o) => sum + (o.total_cost || 0), 0);
+  const totalAdminFee = allOrders.reduce((sum, o) => sum + (o.admin_fee || 0), 0);
+  const netProfit = totalRevenue - totalCost - totalAdminFee;
+
+  res.json([{ 
+    pending_amount: pending, 
+    released_amount: released,
+    total_revenue: totalRevenue,
+    total_cost: totalCost,
+    total_admin_fee: totalAdminFee,
+    net_profit: netProfit
+  }]);
+});
+
+apiRouter.delete("/scan/session/:id", authenticateToken, async (req, res) => {
   try {
     const sessionId = req.params.id;
 
@@ -424,7 +451,7 @@ app.delete("/api/scan/session/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.get("/api/scan/session/:id/details", authenticateToken, async (req, res) => {
+apiRouter.get("/scan/session/:id/details", authenticateToken, async (req, res) => {
   const { data: details, error: detailError } = await supabase
     .from("session_details")
     .select("tracking_number")
@@ -443,7 +470,7 @@ app.get("/api/scan/session/:id/details", authenticateToken, async (req, res) => 
 });
 
 // User Management
-app.get("/api/users", authenticateToken, async (req, res) => {
+apiRouter.get("/users", authenticateToken, async (req, res) => {
   const { data, error } = await supabase
     .from("users")
     .select("id, username, role, name");
@@ -452,9 +479,9 @@ app.get("/api/users", authenticateToken, async (req, res) => {
   res.json(data);
 });
 
-app.post("/api/users", authenticateToken, async (req, res) => {
+apiRouter.post("/users", authenticateToken, async (req, res) => {
   const { username, password, role, name } = req.body;
-  const hashedPassword = _bcrypt.hashSync(password, 10);
+  const hashedPassword = bcrypt.hashSync(password, 10);
   const { data, error } = await supabase
     .from("users")
     .insert([{ username, password: hashedPassword, role, name }])
@@ -464,9 +491,21 @@ app.post("/api/users", authenticateToken, async (req, res) => {
   res.json(data[0]);
 });
 
-// API Routes
-app.get("/api/health", (req, res) => {
+apiRouter.get("/", (req, res) => {
+  res.json({ message: "API Root reached" });
+});
+
+apiRouter.get("/health", (req, res) => {
   res.json({ status: "ok", environment: process.env.VERCEL ? "vercel" : "local" });
+});
+
+// Mount the router at /api
+app.use("/api", apiRouter);
+
+// Catch-all for /api routes that don't match
+app.use("/api/*", (req, res) => {
+  console.log(`404 at ${req.url}`);
+  res.status(404).json({ error: `API route ${req.method} ${req.url} not found on Express` });
 });
 
 // Global Error Handler
