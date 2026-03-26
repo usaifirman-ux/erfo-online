@@ -1,0 +1,7 @@
+{
+  "name": "ERFOLGS ONLINE STORE",
+  "description": "Sistem pengelolaan pesanan multi-marketplace (Shopee, TikTok, Lazada) dengan fitur scan resi, manajemen sesi, dan pelaporan akurat.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
