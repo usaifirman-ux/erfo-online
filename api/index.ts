@@ -1,15 +1,21 @@
+import "dotenv/config";
 import express from "express";
-import { createServer as createViteServer } from "vite";
-import path from "path";
+console.log("API Index starting...");
+import * as path from "node:path";
 import cors from "cors";
-import { fileURLToPath } from "url";
-import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
+import { fileURLToPath } from "node:url";
+import * as jwt from "jsonwebtoken";
+import * as bcrypt from "bcryptjs";
 import { createClient } from "@supabase/supabase-js";
+
+// @ts-ignore
+const _jwt = jwt.default || jwt;
+// @ts-ignore
+const _bcrypt = bcrypt.default || bcrypt;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const JWT_SECRET = "erfolgs-secret-key";
+const JWT_SECRET = process.env.JWT_SECRET || "erfolgs-secret-key";
 
 // Supabase Configuration
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://hmqcjaqttukjpnckjhtz.supabase.co";
@@ -25,13 +31,19 @@ const PORT = 3000;
 app.use(cors());
 app.use(express.json());
 
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.url}`);
+  next();
+});
+
 // Auth Middleware
 const authenticateToken = (req: any, res: any, next: any) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) return res.sendStatus(401);
 
-  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+  _jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
     if (err) return res.sendStatus(403);
     req.user = user;
     next();
@@ -58,7 +70,7 @@ app.get("/api/debug/orders", async (req, res) => {
 // Setup Route
 app.get("/api/setup", async (req, res) => {
   try {
-    const hashedPassword = bcrypt.hashSync("admin123", 10);
+    const hashedPassword = _bcrypt.hashSync("admin123", 10);
     const { data, error } = await supabase
       .from("users")
       .upsert([{ 
@@ -130,13 +142,13 @@ app.post("/api/auth/login", async (req, res) => {
 
     if (!user) return res.status(400).json({ message: "User not found" });
     
-    const isPasswordValid = bcrypt.compareSync(password, user.password);
+    const isPasswordValid = _bcrypt.compareSync(password, user.password);
     if (!isPasswordValid) {
       console.warn(`Invalid password for user: ${username}`);
       return res.status(400).json({ message: "Invalid password" });
     }
     
-    const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET);
+    const token = _jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET);
     res.json({ token, user: { id: user.id, username: user.username, role: user.role, name: user.name } });
   } catch (err: any) {
     console.error("Login Exception:", err);
@@ -442,7 +454,7 @@ app.get("/api/users", authenticateToken, async (req, res) => {
 
 app.post("/api/users", authenticateToken, async (req, res) => {
   const { username, password, role, name } = req.body;
-  const hashedPassword = bcrypt.hashSync(password, 10);
+  const hashedPassword = _bcrypt.hashSync(password, 10);
   const { data, error } = await supabase
     .from("users")
     .insert([{ username, password: hashedPassword, role, name }])
@@ -454,33 +466,42 @@ app.post("/api/users", authenticateToken, async (req, res) => {
 
 // API Routes
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok" });
+  res.json({ status: "ok", environment: process.env.VERCEL ? "vercel" : "local" });
 });
 
-async function startServer() {
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
+// Global Error Handler
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error("Global Error Handler:", err);
+  res.status(500).json({ 
+    message: err.message || "Internal server error",
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
 
-  // Only listen if not on Vercel
-  if (!process.env.VERCEL) {
+// Only listen if not on Vercel (local development)
+if (!process.env.VERCEL) {
+  const startServer = async () => {
+    // Vite middleware for development
+    if (process.env.NODE_ENV !== "production") {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } else {
+      const distPath = path.join(process.cwd(), "dist");
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
+
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
-  }
+  };
+  startServer();
 }
-
-startServer();
 
 export default app;

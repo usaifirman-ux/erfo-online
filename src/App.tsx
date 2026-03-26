@@ -69,39 +69,76 @@ const API_URL = ''; // Relative to same host
 const api = {
   get: async (endpoint: string) => {
     const token = localStorage.getItem('token');
-    const res = await fetch(`${API_URL}${endpoint}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (res.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+    try {
+      const res = await fetch(`${API_URL}${endpoint}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+        return { error: 'Unauthorized' };
+      }
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        console.error('Non-JSON response:', text);
+        return { error: 'Server returned non-JSON response' };
+      }
+    } catch (err: any) {
+      console.error('Fetch error:', err);
+      return { error: err.message || 'Network error' };
     }
-    return res.json();
   },
   post: async (endpoint: string, data: any) => {
     const token = localStorage.getItem('token');
-    const res = await fetch(`${API_URL}${endpoint}`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(data)
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      const errorMsg = json.error || json.message || 'Terjadi kesalahan pada server';
-      return { error: typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg) };
+    try {
+      const res = await fetch(`${API_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(data)
+      });
+      
+      const text = await res.text();
+      let json: any;
+      try {
+        json = JSON.parse(text);
+      } catch (e) {
+        console.error('Non-JSON response:', text);
+        return { error: `Server error (500): ${text.substring(0, 100)}` };
+      }
+
+      if (!res.ok) {
+        const errorMsg = json.error || json.message || 'Terjadi kesalahan pada server';
+        return { error: typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg) };
+      }
+      return json;
+    } catch (err: any) {
+      console.error('Fetch error:', err);
+      return { error: err.message || 'Network error' };
     }
-    return json;
   },
   delete: async (endpoint: string) => {
     const token = localStorage.getItem('token');
-    const res = await fetch(`${API_URL}${endpoint}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    return res.json();
+    try {
+      const res = await fetch(`${API_URL}${endpoint}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        console.error('Non-JSON response:', text);
+        return { error: 'Server returned non-JSON response' };
+      }
+    } catch (err: any) {
+      console.error('Fetch error:', err);
+      return { error: err.message || 'Network error' };
+    }
   }
 };
 
@@ -2331,18 +2368,14 @@ const Login = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-    const data = await res.json();
-    if (res.ok) {
+    const data = await api.post('/api/auth/login', { username, password });
+    
+    if (data.error) {
+      setError(data.error);
+    } else {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       navigate('/');
-    } else {
-      setError(data.message);
     }
   };
 
